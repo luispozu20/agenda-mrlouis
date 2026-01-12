@@ -1,0 +1,13 @@
+{
+  "name": "agenda-ai-notion",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "express": "^4.19.2"
+  }
+}

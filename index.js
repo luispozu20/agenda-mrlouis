@@ -25,6 +25,37 @@ app.use((req, res, next) => {
   next();
 });
 
+// Helpers de normalización (quita espacios, pasa a minúsculas y elimina tildes)
+const normalize = (s) =>
+  String(s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, ""); // quita acentos
+
+const estadoMap = {
+  "sin empezar": "Sin empezar",
+  "pendiente": "Sin empezar",
+  "no iniciado": "Sin empezar",
+
+  "en progreso": "En progreso",
+  "progreso": "En progreso",
+  "en curso": "En progreso",
+
+  "listo": "Listo",
+  "completado": "Listo",
+  "completada": "Listo",
+  "terminado": "Listo",
+  "terminada": "Listo",
+};
+
+const tipoMap = {
+  "reunion": "Reunión",
+  "cita": "Cita",
+  "tarea": "Tarea",
+  "recordatorio": "Recordatorio",
+};
+
 /**
  * POST /agenda
  * Body:
@@ -52,21 +83,36 @@ app.post("/agenda", async (req, res) => {
     if (!Fecha) return res.status(400).json({ ok: false, error: "Falta Fecha" });
     if (!Tipo) return res.status(400).json({ ok: false, error: "Falta Tipo" });
 
-    const tipos = Array.isArray(Tipo) ? Tipo : [Tipo];
+    // Normaliza Estado y Tipo
+    const estadoNorm = estadoMap[normalize(Estado)] || "Sin empezar";
+
+    const tiposRaw = Array.isArray(Tipo) ? Tipo : [Tipo];
+    const tiposNorm = tiposRaw
+      .map((t) => tipoMap[normalize(t)] || String(t).trim())
+      .filter(Boolean);
 
     const created = await notion.pages.create({
       parent: { database_id: NOTION_DATABASE_ID },
       properties: {
         "Nombre": { title: [{ text: { content: String(Nombre) } }] },
         "Fecha": { date: { start: String(Fecha) } },
-        "Tipo": { multi_select: tipos.map((t) => ({ name: String(t) })) },
+
+        // Si tu propiedad "Tipo" en Notion es multi_select, esto está correcto:
+        "Tipo": { multi_select: tiposNorm.map((t) => ({ name: t })) },
+
         "Personas": { rich_text: [{ text: { content: String(Personas) } }] },
         "Descripción": { rich_text: [{ text: { content: String(Descripción) } }] },
-        "Estado": { status: { name: String(Estado) } },
+
+        // Status exacto
+        "Estado": { status: { name: estadoNorm } },
       },
     });
 
-    res.json({ ok: true, notion_page_id: created.id });
+    res.json({
+      ok: true,
+      notion_page_id: created.id,
+      normalized: { Estado: estadoNorm, Tipo: tiposNorm },
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }

@@ -6,8 +6,7 @@ app.use(express.json());
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
-const API_KEY = process.env.API_KEY; // tu llave privada
-const NOTION_VERSION = "2022-06-28"; // versión estable
+const API_KEY = process.env.API_KEY;
 
 if (!NOTION_TOKEN || !NOTION_DATABASE_ID || !API_KEY) {
   console.error("Faltan variables de entorno: NOTION_TOKEN, NOTION_DATABASE_ID, API_KEY");
@@ -16,7 +15,10 @@ if (!NOTION_TOKEN || !NOTION_DATABASE_ID || !API_KEY) {
 
 const notion = new Client({ auth: NOTION_TOKEN });
 
-// middleware simple de seguridad
+// ✅ Health check público (sin API key)
+app.get("/health", (req, res) => res.send("ok"));
+
+// 🔒 Seguridad para TODO lo demás
 app.use((req, res, next) => {
   const key = req.header("x-api-key");
   if (key !== API_KEY) return res.status(401).json({ ok: false, error: "Unauthorized" });
@@ -25,11 +27,11 @@ app.use((req, res, next) => {
 
 /**
  * POST /agenda
- * Body esperado:
+ * Body:
  * {
  *   "Nombre": "Reunión con Juan",
  *   "Fecha": "2026-01-12T16:00:00-05:00",
- *   "Tipo": "Reunión", // o ["Reunión"]
+ *   "Tipo": "Reunión" OR ["Reunión"],
  *   "Personas": "Juan",
  *   "Descripción": "Sobre presupuesto",
  *   "Estado": "Sin empezar"
@@ -43,7 +45,7 @@ app.post("/agenda", async (req, res) => {
       Tipo,
       Personas = "",
       Descripción = "",
-      Estado = "Sin empezar"
+      Estado = "Sin empezar",
     } = req.body || {};
 
     if (!Nombre) return res.status(400).json({ ok: false, error: "Falta Nombre" });
@@ -57,20 +59,18 @@ app.post("/agenda", async (req, res) => {
       properties: {
         "Nombre": { title: [{ text: { content: String(Nombre) } }] },
         "Fecha": { date: { start: String(Fecha) } },
-        "Tipo": { multi_select: tipos.map(t => ({ name: String(t) })) },
+        "Tipo": { multi_select: tipos.map((t) => ({ name: String(t) })) },
         "Personas": { rich_text: [{ text: { content: String(Personas) } }] },
         "Descripción": { rich_text: [{ text: { content: String(Descripción) } }] },
-        "Estado": { status: { name: String(Estado) } }
-      }
-    }, { notionVersion: NOTION_VERSION });
+        "Estado": { status: { name: String(Estado) } },
+      },
+    });
 
     res.json({ ok: true, notion_page_id: created.id });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
-
-app.get("/health", (req, res) => res.send("ok"));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log("Listening on", port));
